@@ -41,9 +41,7 @@ def main():
                                     f"  🛠️  [Tool Requested]: {call['name']} with args {call['args']}"
                                 )
                         elif isinstance(msg, ToolMessage):
-                            print(
-                                f"  📥 [Tool Output Received]: {msg.content[:150]}..."
-                            )
+                            print(f"  📥 [Tool Output Received]: {msg.content[:150]}...")
                         elif hasattr(msg, "content") and msg.content:
                             print(f"  💬 [Message]: {msg.content[:200]}...\n")
 

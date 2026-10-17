@@ -181,3 +181,20 @@ def test_evidence_from_real_tool_calls(seeded: sqlite3.Connection, ctx: ToolCont
     good = "Your return is approved and your $49.99 refund has been issued."
     assert GUARD.check(good, evidence).ok
     assert not GUARD.check("Your $59.99 refund has been issued.", evidence).ok
+
+
+@pytest.mark.parametrize(
+    "reply",
+    [
+        "Your refund of $120.00 has been issued.",
+        "The $49.99 refund was sent to your card.",
+        "Your refund of $1,200.50 is complete and has been processed.",
+    ],
+)
+def test_refund_claims_with_decimal_amounts_are_still_detected(reply: str) -> None:
+    assert "unsupported_refund_claim" in _check(reply, [PENDING]).codes
+
+
+def test_return_approval_claims_with_decimal_amounts_are_still_detected() -> None:
+    reply = "Your return for the $49.99 item has been approved."
+    assert "unsupported_return_claim" in _check(reply, []).codes

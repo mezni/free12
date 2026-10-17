@@ -17,9 +17,7 @@ Return ONLY a float number representing the score.
 """
 
 
-def evaluate_correctness(
-    user_input: str, expected_facts: list[str], response: str
-) -> float:
+def evaluate_correctness(user_input: str, expected_facts: list[str], response: str) -> float:
     # Lazy-load LLM judge here so it doesn't fail during test collection
     llm_judge = ChatOpenAI(model="gpt-4o", temperature=0)
 

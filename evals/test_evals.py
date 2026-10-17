@@ -35,9 +35,7 @@ def test_agent_evals(test_case):
     final_response = messages[-1].content
 
     actual_tools = [
-        msg.name
-        for msg in messages
-        if isinstance(msg, ToolMessage) and hasattr(msg, "name")
+        msg.name for msg in messages if isinstance(msg, ToolMessage) and hasattr(msg, "name")
     ]
 
     # 3. Evaluate Metrics

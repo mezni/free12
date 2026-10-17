@@ -65,9 +65,7 @@ if prompt := st.chat_input("What would you like the agents to research or write?
                     for node_name, output in event.items():
                         st.write(f"🔄 **Node Executed:** `{node_name}`")
                         if "next_agent" in output:
-                            st.write(
-                                f"🎯 **Routing Decision:** `{output['next_agent']}`"
-                            )
+                            st.write(f"🎯 **Routing Decision:** `{output['next_agent']}`")
                         if "messages" in output:
                             for msg in output["messages"]:
                                 if hasattr(msg, "tool_calls") and msg.tool_calls:
@@ -87,9 +85,7 @@ if prompt := st.chat_input("What would you like the agents to research or write?
                 final_response = "Task completed successfully."
 
             response_placeholder.markdown(final_response)
-            st.session_state.messages.append(
-                {"role": "assistant", "content": final_response}
-            )
+            st.session_state.messages.append({"role": "assistant", "content": final_response})
 
         except Exception as e:
             error_msg = f"❌ Error: {str(e)}"

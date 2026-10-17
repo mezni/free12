@@ -100,3 +100,12 @@ returns a `Route`: intent, confidence, sentiment, escalation decision, verified 
 `agent/rules.py` give an instant path to a person (no model call), a safety net the model cannot
 override (anger, legal threats), and a keyword fallback when the model is slow, down or unusable.
 The router makes exactly one model call per message; give it an LLM client with a tight retry budget.
+
+## Agent loop (step 9)
+
+`agent/support_agent.py` handles one customer turn: input guard -> router -> (human handoff) or the
+model/tool loop -> output guard -> reply. The loop is bounded (steps, tool failures, a time budget);
+a reply the output guard rejects is regenerated once and otherwise replaced by a real human handoff.
+`build_support_agent(settings, llm=..., router_llm=...)` wires it; `llm.factory.build_llm_clients`
+builds the real clients (shared connection pool, tight retry budget for the router). One request at
+a time per `Session`.

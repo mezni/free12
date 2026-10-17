@@ -27,17 +27,20 @@ _DOLLAR = re.compile(r"(?<![\w.])\$\s?(\d+(?:,\d{3})*(?:\.\d+)?)")
 _WORD_AMOUNT = re.compile(r"\b(\d+(?:\.\d{1,2})?)\s?(?:dollars|usd|cad)\b", re.IGNORECASE)
 _DAYS = re.compile(r"\b(\d+)[- ]days?\b", re.IGNORECASE)
 
+# up to 60 characters within one sentence; a decimal point between digits is not a sentence end
+_SPAN = r"(?:[^.!?]|(?<=\d)\.(?=\d)){0,60}"
+
 _REFUND_DONE = (
     re.compile(
         r"\b(?:i|we)(?:'ve| have)?\s+(?:just\s+)?(?:issued|processed|refunded|credited)\b", re.I
     ),
     re.compile(
-        r"\brefund\b[^.!?]{0,60}\b(?:has been|was|is)\s+(?:successfully\s+)?"
+        rf"\brefund\b{_SPAN}\b(?:has been|was|is)\s+(?:successfully\s+)?"
         r"(?:issued|processed|sent|credited|completed)\b",
         re.I,
     ),
 )
-_RETURN_APPROVED = re.compile(r"\breturn\b[^.!?]{0,40}\b(?:has been|was|is)\s+approved\b", re.I)
+_RETURN_APPROVED = re.compile(rf"\breturn\b{_SPAN}\b(?:has been|was|is)\s+approved\b", re.I)
 _ESCALATED = re.compile(
     r"\b(?:i(?:'ve| have)|i am|i'm|i will|i'll)\s+(?:now\s+)?"
     r"(?:escalat\w+|transfer\w*|hand\w*\s+(?:you|this|it)\s+over|connect\w*\s+you)\b",

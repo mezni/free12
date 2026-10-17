@@ -57,6 +57,7 @@ class Settings:
     log_json: bool = True
     trace_path: str = "traces/spans.jsonl"  # empty string disables the JSONL trace file
     roles_path: str = ""  # empty: use the packaged registry/roles.toml
+    store_name: str = "our store"  # shown in the agent's system prompt
     policy: PolicySettings = field(default_factory=PolicySettings)
     guardrails: GuardrailSettings = field(default_factory=GuardrailSettings)
     llm: LLMSettings = field(default_factory=LLMSettings)
@@ -90,5 +91,7 @@ class Settings:
             log_json=e.get("RESOLVE_LOG_JSON", "1").lower() not in {"0", "false", "no"},
             trace_path=e.get("RESOLVE_TRACE_PATH", defaults.trace_path),
             roles_path=e.get("RESOLVE_ROLES_PATH", defaults.roles_path),
+            store_name=e.get("RESOLVE_STORE_NAME", defaults.store_name).strip()
+            or defaults.store_name,
             llm=llm,
         )
