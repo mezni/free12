@@ -92,3 +92,11 @@ results support), and a gate for long-term memory writes. Use the `Guardrails` f
 every check and counts findings without ever recording customer text. Security limits live in
 `GuardrailSettings` (code), not in environment variables. `tests/test_authorization_matrix.py`
 proves every id-taking tool refuses another customer's identifiers.
+
+## Intent router (step 8)
+
+`agent/router.py` classifies each (guard-masked) customer message with the small router model and
+returns a `Route`: intent, confidence, sentiment, escalation decision, verified order id. Rules in
+`agent/rules.py` give an instant path to a person (no model call), a safety net the model cannot
+override (anger, legal threats), and a keyword fallback when the model is slow, down or unusable.
+The router makes exactly one model call per message; give it an LLM client with a tight retry budget.
