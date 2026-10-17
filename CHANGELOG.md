@@ -1,9 +1,12 @@
 # Changelog
 
-All notable changes to **relay-agent** are documented in this file.
+All notable changes to **resolve-agent** are documented in this file.
 
 The format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
+
+`resolve-agent` is built in reviewed steps (see the [README](README.md) and
+[architecture](docs/architecture.md)). Steps 1–9 are shipped in `0.1.0`.
 
 ---
 
@@ -11,98 +14,171 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Planned
 
-- Human-in-the-loop approval gates before final synthesis
-- Local PDF / CSV document ingestion for multi-modal research
-- LangSmith observability integration
+- Long-term memory writes, gated by the existing `MemoryWriteGuard` (step 10)
+- Session persistence and multi-turn memory across process restarts
+- Evaluation harness: golden sets, deterministic graders and an LLM-as-a-judge
+  report driven by the `judge` role (step 13)
+- Human-in-the-loop approval for refunds that `requires_approval`
+- A production CLI/HTTP entrypoint and container packaging for the agent loop
 
 ---
 
 ## [0.1.0] - 2026-10-17
 
-First public release: a modular, production-grade multi-agent research and
-synthesis engine built on LangGraph.
+First public release: a policy-grounded ecommerce customer-support agent in
+pure Python, with ecommerce scope limited to returns, exchanges and
+"where is my order". No LangChain/LangGraph dependency: the loop, tools,
+guardrails and observability are plain, typed Python.
 
 ### Added
 
-#### Core engine
+#### Domain & persistence (step 1)
 
-- Supervisor–worker state graph with conditional routing and `FINISH` termination
-  (`31418ef` — `src/workflows/graph.py`, `src/workflows/state.py`)
-- Supervisor router using Pydantic structured output to choose
-  `Researcher` / `Writer` / `FINISH` (`src/agents/supervisor.py`)
-- Researcher agent with DuckDuckGo `web_search` tool binding and manual
-  `ToolMessage` execution loop (`c631693` — `src/agents/researcher.py`,
-  `src/tools/search.py`)
-- Writer agent that synthesizes research notes into markdown reports
-  (`src/agents/writer.py`)
-- `operator.add` message reducer on `AgentState` for safe, append-only
-  conversation history
+- SQLite schema v1 (`src/resolve_agent/domain/schema.py`, `eda6de3`) with
+  `customers`, `orders`, `order_items`, `returns`, `refunds` and an `audit_log`;
+  constraints (`CHECK`, foreign keys, `UNIQUE`) live in the database, not only in
+  Python, and `PRAGMA user_version` tracks the schema version.
+- Autocommit connection with `foreign_keys`, `busy_timeout` and WAL, plus
+  explicit `transaction()` / re-entrant `atomic()` helpers
+  (`domain/db.py`).
+- `Decimal` in Python, integer cents in SQLite, never `float`
+  (`domain/money.py`).
+- Repositories as the only SQL boundary; reads are customer-scoped
+  (`get_for_customer`), refund creation is idempotent by key, and every write
+  records an audit entry (`domain/repositories.py`).
+- Deterministic, edge-case dev data seeded relative to `today`, with an
+  injectable `Clock` (`domain/seed.py`, `domain/clock.py`).
 
-#### Persistence
+#### Policy engine (step 2)
 
-- LangGraph SQLite checkpointer (`SqliteSaver`) writing to
-  `checkpoints.sqlite`, with `thread_id`-scoped sessions across CLI and UI
-  (`35f559b`)
+- Business rules as pure functions — no I/O, clock, environment or LLM — in
+  `policy/rules.py`: `check_return_eligibility`, `check_exchange_eligibility`
+  and `check_refund`.
+- Machine-readable `Decision` results (`allowed`, `reason`, `requires_approval`,
+  `facts`) with a `Reason` enum and a customer-safe `explain()` renderer
+  (`policy/decisions.py`). The LLM never decides policy; it only phrases a
+  `Decision`.
+- Policy values live in versioned code (`PolicySettings`: 30-day exclusive
+  return window, $50 auto-refund limit, `apparel`/`footwear`/`accessories`
+  exchangeable), never in environment variables.
 
-#### Interfaces
+#### Tool layer (step 3)
 
-- CLI runner with streaming node transitions, route decisions, and tool-call
-  logging (`0a77193` — `src/main.py`)
-- Streamlit workspace UI with chat history, node-status expanders, and a
-  sidebar session/thread manager (`4bef770` — `app.py`)
+- Registry that derives JSON schemas from type hints (`Annotated`, `Literal`,
+  `Enum`, `X | None`), validates arguments strictly, rejects unknown arguments,
+  and caps string length (`tools/registry.py`).
+- Safe dispatch: write tools run in a single transaction, every call is
+  traced, metered and audited, and tools return a `ToolResult` value instead of
+  raising (`tools/result.py`).
+- The agent's tools (`tools/commerce.py`): `get_order_status`, `list_my_orders`,
+  `check_return_eligibility`, `check_exchange_eligibility`, `create_return`,
+  `issue_refund`, `escalate_to_human`.
+- Authorization and policy enforced in code: the customer comes from
+  `ToolContext`, money is computed server-side, and "not yours" looks identical
+  to "does not exist".
 
-#### Evaluation
+#### Observability (step 4)
 
-- Golden query dataset (`evals/datasets/golden_queries.json`)
-- Deterministic tool-selection metric (`evals/metrics/tool_usage.py`)
-- LLM-as-a-judge correctness metric grading key-fact coverage from `0.0` to
-  `1.0` with GPT-4o (`evals/metrics/correctness.py`)
-- Pytest harness parametrized over the benchmark set, asserting
-  `tool_score == 1.0` and `correctness_score >= 0.8`
-  (`0f84766`)
+- `contextvars`-based tracing with parent/child spans, `trace_id`/`span_id`,
+  bounded attributes, and in-memory/JSONL/metrics exporters
+  (`obs/tracing.py`).
+- Structured JSON logs carrying `trace_id`/`span_id` with secret redaction
+  (`obs/logs.py`).
+- In-process labelled counters and bounded histograms with p50/p95/p99
+  (`obs/metrics.py`), one-call setup via `obs.setup`, and a trace-tree dev
+  renderer (`python -m resolve_agent.obs.render`).
 
-#### Delivery & tooling
+#### LLM client (step 5)
 
-- Project scaffolding and dependency locking with `uv`
-  (`4a58874` — `pyproject.toml`, `uv.lock`)
-- Multi-stage `Dockerfile` and `docker-compose.yml` for web app deployment
-  (`9307483`)
-- GitHub Actions CI running `ruff` linting and the pytest evaluation suite on
-  every push and pull request (`be6a3d2` — `.github/workflows/ci.yml`)
-- Ruff lint/import-sort configuration and pytest `testpaths` covering both
-  `tests/` and `evals/`
+- Provider-neutral request/response/message types and a streaming event model
+  (`llm/types.py`).
+- `AnthropicClient` on plain `httpx` with jittered exponential backoff bounded
+  by a total time budget, per-attempt timeouts, SSE streaming, and error
+  classification; request bodies are never logged or raised
+  (`llm/anthropic_client.py`, `llm/retry.py`, `llm/errors.py`).
+- `FakeLLM` for deterministic tests/evals and `ObservedLLMClient` for
+  per-call spans, token/cost metrics and first-token latency
+  (`llm/fake.py`, `llm/observed.py`, `llm/cost.py`).
+- `build_llm_clients` shares one connection pool and gives the latency-critical
+  router a tighter retry budget (`llm/factory.py`).
+
+#### Prompt & model registry (step 6)
+
+- Prompts as versioned files (`registry/library/<name>/v<N>.md`) rendered
+  strictly with `string.Template`, each carrying a sha256 and a
+  `name@vN+hash` id stamped on every LLM span (`registry/prompts.py`).
+- `roles.toml` pins the model, parameters and prompt version per role
+  (`router`, `agent`, `judge`); `Registry.load` fails at startup if a role
+  points at a missing prompt (`registry/roles.py`, `registry/registry.py`).
+- Release lock (`registry/prompts.lock.json`): released prompt versions are
+  immutable — `python -m resolve_agent.registry.lock check|update`
+  (`registry/lock.py`).
+
+#### Guardrails (step 7)
+
+- `InputGuard`: size limit, Unicode normalisation, hidden/invisible-character
+  detection, prompt-injection screening and PII masking; the masked text is the
+  only version allowed to reach the LLM, logs or storage
+  (`guardrails/input.py`, `guardrails/injection.py`, `guardrails/pii.py`).
+- `OutputGuard`: a reply may only state amounts, day counts, ids and outcomes
+  that this turn's tool results actually support, and may not leak PII or the
+  system prompt (`guardrails/output.py`).
+- `MemoryWriteGuard` gate for long-term memory writes (reserved for step 10)
+  (`guardrails/memory.py`).
+- A `Guardrails` facade that traces and counts every check without ever
+  recording customer text (`guardrails/__init__.py`), and an authorization
+  matrix test proving every id-taking tool refuses another customer's
+  identifiers (`tests/test_authorization_matrix.py`).
+
+#### Intent router (step 8)
+
+- `IntentRouter` classifies each guard-masked message into an intent
+  (`order_status`, `return`, `exchange`, `human_request`, `out_of_scope`),
+  confidence, sentiment and escalation decision, verifying any order id the
+  model returns against the message (`agent/router.py`).
+- Deterministic rules (`agent/rules.py`) give an instant path to a person with
+  no model call, a safety net the model cannot override (anger, legal threats,
+  fraud), and a keyword fallback when the model is slow, down or unusable. The
+  model may raise sentiment but never lower it.
+
+#### Agent loop (step 9)
+
+- `SupportAgent.handle` runs one customer turn:
+  `input guard -> router -> (handoff) or model/tool loop -> output guard -> reply`,
+  all inside one `agent.turn` span (`agent/support_agent.py`).
+- Bounded execution: max steps, a per-turn time budget (per-call timeouts shrink
+  to the remaining budget), parallel tool calls per step, consecutive tool
+  failures and repeated frustration all lead to a real human handoff.
+- A reply the output guard rejects is regenerated once with a correction that
+  names only violation codes, is never stored and never sent; otherwise the turn
+  ends in a handoff.
+- Deterministic, masked, bounded handoff summaries
+  (`agent/handoff.py`), session state with bounded evidence
+  (`agent/session.py`), and `build_support_agent` to wire it all together
+  (`agent/factory.py`).
+
+#### Tooling
+
+- `uv` project with a locked dependency set (`pyproject.toml`, `uv.lock`);
+  runtime dependency is `httpx` only.
+- `ruff` lint/import-sort and strict `mypy` configuration.
+- Pytest suite (~550 tests) covering domain, policy, tools, obs, LLM, registry,
+  guardrails, router and the end-to-end agent loop.
 
 ### Changed
 
-- Repository history consolidated during cleanup; experimental modules from
-  earlier iterations were removed from the tree (`14ebeb5`, `6ec9999`)
+- The repository was repurposed from the earlier `relay-agent` multi-agent
+  research prototype into `resolve-agent`. The prototype's modules
+  (`src/agents/`, `src/workflows/`, `src/main.py`, `app.py`, `evals/`) remain in
+  the tree for reference but are not part of the `resolve_agent` package.
 
 ---
 
-## Earlier internal iterations (2026-10-10 → 2026-10-14)
+## Archived prototype: `relay-agent` (unreleased, 2026-10-17)
 
-Pre-release experiments that informed the current architecture. These were
-superseded and cleaned up before `0.1.0`; they are listed for historical
-context only.
-
-- **Data layer** — SQLite persistence with revision-based concurrency control,
-  routing, persistence, and an application service layer with typed
-  architectural boundaries (`fbd7b79`, `fb36eec`)
-- **HTTP API** — request validation, API authentication with role-based
-  authorization, centralized validated configuration (`5cdfc6c`, `4b0e4f2`,
-  `52ccda9`)
-- **Reliability** — retry policies, timeouts, rate limiting and concurrency
-  control, resilience and error handling (`7fbc585`, `80d5867`, `8c849ac`,
-  `376aba4`)
-- **Async & background processing** — background jobs, job queue integration,
-  outbox pattern, event-driven and distributed workflows, durable routing
-  (`802e9c1` … `6f68fc5`)
-- **Operations** — structured logging with correlation IDs, metrics and health
-  checks, observability, SLIs/SLOs (`e76e850`, `79e16b4`, `4698f9f`,
-  `0b7eacd`)
-- **Quality & security** — automated quality gates, security hardening,
-  security regression tests and threat model, Locust load-test scenario and
-  capacity plan (`3a68d33`, `15a3d83`, `cd03f18`, `3796981`)
-
-[Unreleased]: https://github.com/your-username/relay-agent/compare/v0.1.0...HEAD
-[0.1.0]: https://github.com/your-username/relay-agent/releases/tag/v0.1.0
+Before `resolve-agent`, this repository held an early "multi-agent research and
+synthesis engine" prototype built on LangGraph, LangChain and OpenAI
+(`Supervisor`/`Researcher`/`Writer` state graph, a DuckDuckGo `web_search` tool,
+a SQLite LangGraph checkpointer, a CLI streamer, a Streamlit UI and a small
+LLM-as-a-judge eval set). It was superseded by the policy-first support agent
+described above and is no longer the project's direction.
