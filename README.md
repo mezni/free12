@@ -1,215 +1,85 @@
-<div align="center">
+# resolve-agent
 
-# ⚡ relay-agent
+Ecommerce customer-support agent in pure Python: policy engine, guardrails, evals, observability.
 
-**A modular, high-performance Multi-Agent Research & Synthesis Engine built with LangGraph, `uv`, and `pytest`.**
+Scope: returns, exchanges, where is my order.
 
-[![Python 3.10+](https://img.shields.io/badge/python-3.10+-blue.svg)](https://www.python.org/downloads/)
-[![Package Manager: uv](https://img.shields.io/badge/package--manager-uv-8A2BE2.svg)](https://github.com/astral-sh/uv)
-[![Code Style: Ruff](https://img.shields.io/badge/code%20style-ruff-000000.svg)](https://github.com/astral-sh/ruff)
-[![Framework: LangGraph](https://img.shields.io/badge/framework-LangGraph-orange.svg)](https://github.com/langchain-ai/langgraph)
-[![License: MIT](https://img.shields.io/badge/license-MIT-green.svg)](LICENSE)
+## Dev setup
 
-</div>
-
----
-
-## 📌 Overview
-
-**`relay-agent`** is a production-ready, event-driven multi-agent framework designed for complex, autonomous research and technical synthesis. Built on top of **LangGraph**, it replaces rigid sequential chains with a **Dynamic Supervisor Routing Architecture**. 
-
-The system continuously evaluates incoming tasks, delegates research to specialized domain worker agents, routes outputs back to quality assurance/writers, and manages execution loops deterministically using state graphs.
-
----
-
-## 🏛 System Architecture
-
-The core architecture follows a **Supervisor-Worker Topology**. The Supervisor acts as a central orchestrator, reading state transitions and deciding the next execution node or signaling process completion (`FINISH`).
-
-```text
-                        ┌──────────────────┐
-                        │   User Prompt    │
-                        └────────┬─────────┘
-                                 │
-                                 ▼
-                        ┌──────────────────┐
-                        │    Supervisor    │◄───┐
-                        │  (Router Agent)  │    │
-                        └───┬──────────┬───┘    │
-                            │          │        │
-            ┌───────────────┘          └────────┼───────┐
-            │                                   │       │ Loop
-            ▼                                   ▼       │ State
-  ┌──────────────────┐                ┌─────────────────┴┐
-  │ Researcher Agent │                │   Writer Agent   │
-  │ (Fact Gathering) │                │(Synthesis/Format)│
-  └────────┬─────────┘                └─────────┬────────┘
-           │                                    │
-           └────────────────────────────────────┘
-```
-
-### Agent Roles
-
-* 🎯 **Supervisor Node**: Evaluates global task progress using structured output and controls conditional state graph transitions.
-* 🔍 **Researcher Node**: Executes tool calls (web search, data queries), extracts raw facts, and stores evidence in state.
-* ✍️ **Writer Node**: Consolidates research findings into structured, publication-ready markdown reports.
-
----
-
-## 📂 Project Structure
-
-```text
-relay-agent/
-├── .env.example              # Environment variable template
-├── README.md                 # Project documentation
-├── pyproject.toml            # Project setup, dependencies, ruff, & pytest config
-├── uv.lock                     # Deterministic dependency lockfile
-│
-├── config/                   # System configuration
-│   ├── agents_config.yaml    # Agent personas, backstories, and models
-│   └── settings.py           # Global settings & environment loaders
-│
-├── src/                      # Source code
-│   ├── main.py               # Main CLI execution entrypoint
-│   ├── agents/               # Supervisor, Researcher, and Writer nodes
-│   │   ├── base_agent.py
-│   │   ├── researcher.py
-│   │   ├── supervisor.py
-│   │   └── writer.py
-│   ├── workflows/            # Graph state definitions and orchestration
-│   │   ├── graph.py
-│   │   └── state.py
-│   ├── tools/                # Agent tools (web search, custom APIs)
-│   │   └── search.py
-│   └── utils/                # Logging, LLM factory, and helpers
-│       ├── logger.py
-│       └── llm_factory.py
-│
-├── evals/                    # 🧪 AI Behavioral Evaluation Suite
-│   ├── conftest.py           # Pytest fixtures for agent evaluation
-│   ├── datasets/             # Golden benchmarks and golden test queries
-│   │   └── golden_queries.json
-│   ├── metrics/              # Custom scorers (LLM-as-a-judge, tool accuracy)
-│   │   ├── correctness.py
-│   │   └── tool_usage.py
-│   └── test_evals.py         # Pytest wrapper for benchmark execution
-│
-└── tests/                    # Unit and integration tests
-    ├── test_agents.py
-    └── test_workflows.py
-```
-
----
-
-## 🚀 Quickstart & Installation
-
-This project uses [**`uv`**](https://github.com/astral-sh/uv) for fast, reliable Python package and environment management.
-
-### 1. Prerequisites
-
-Ensure you have `uv` installed on your machine:
+Requires [uv](https://docs.astral.sh/uv/).
 
 ```bash
-curl -LsSf https://astral.sh/uv/install.sh | sh
+uv sync                 # create .venv, install deps from uv.lock
+uv run pytest
+uv run ruff check .
+uv run mypy
 ```
 
-### 2. Clone & Setup Workspace
+Add dependencies with `uv add <pkg>` (runtime) or `uv add --dev <pkg>` (dev).
+
+## Layout
+
+| Package | Responsibility |
+|---|---|
+| `domain/` | Entities and repositories (SQLite) |
+| `policy/` | Business rules as pure functions |
+| `tools/` | Typed, validated actions the agent can call |
+| `agent/` | Router, agent loop, memory |
+| `guardrails/` | Input and output safety checks |
+| `obs/` | Tracing, logging, metrics |
+| `evals/` | Golden sets, graders, reports |
+
+## Database (step 1)
+
+SQLite via the standard library, integer cents for money, constraints enforced by the schema.
 
 ```bash
-# Clone repository
-git clone https://github.com/your-username/relay-agent.git
-cd relay-agent
-
-# Sync virtual environment and install locked dependencies
-uv sync
+uv run python -m resolve_agent.domain.seed   # dev only: recreates data/resolve.db with edge-case data
+sqlite3 data/resolve.db "select id, status, total_cents from orders"
 ```
 
-### 3. Environment Variables
+## Policy engine (step 2)
 
-Copy the example `.env` file and set your API keys:
+Pure functions in `policy/rules.py` return a `Decision` (allowed, reason code, requires_approval, facts).
+The LLM never decides policy; it only phrases a `Decision` via `explain()`. Assumptions are listed
+at the top of `rules.py`.
+
+## Tool layer (step 3)
+
+`tools/registry.py` builds JSON schemas from type hints, validates arguments strictly, runs write
+tools in one transaction, never raises, and audits every call. `tools/commerce.py` holds the tools.
+The customer comes from `ToolContext` (set by the auth layer), never from model arguments.
+
+## Observability (step 4)
+
+`obs/` provides contextvars-based tracing (spans exported to `traces/spans.jsonl`), JSON logs that
+carry `trace_id`/`span_id`, and in-process metrics with p50/p95/p99. Call `obs.setup(settings)` once
+at startup. Inspect a trace with:
 
 ```bash
-cp .env.example .env
+uv run python -m resolve_agent.obs.render traces/spans.jsonl [trace_id]
 ```
 
-Edit `.env`:
-```env
-OPENAI_API_KEY=your_openai_api_key_here
-TAVILY_API_KEY=your_tavily_api_key_here  # Optional for search tools
-```
+## LLM client (step 5)
 
----
-
-## 💻 Usage Examples
-
-### 1. Execute via CLI Runner
-
-Run an autonomous research query directly using `uv run`:
-
-```bash
-uv run python src/main.py
-```
-
-### 2. Programmatic Usage
-
-You can import and run the compiled workflow graph inside your own Python application:
+`llm/` has provider-neutral types, `AnthropicClient` (plain `httpx`: retries with jittered backoff
+inside a time budget, per-attempt timeouts, SSE streaming, error classification), `FakeLLM` for
+tests and evals, and `ObservedLLMClient` (span, token/cost metrics per call). Wrap the real client:
 
 ```python
-from langchain_core.messages import HumanMessage
-from src.workflows.graph import graph
-
-
-def run_agent():
-    prompt = "Analyze the structural differences between monolithic and microservices architecture."
-
-    initial_state = {
-        "messages": [HumanMessage(content=prompt)],
-        "next_agent": "Supervisor",
-    }
-
-    # Stream execution nodes
-    for event in graph.stream(initial_state):
-        for node_name, output in event.items():
-            print(f"⚡ [Executed Node]: {node_name}")
-            if "messages" in output:
-                print(f"📝 Output: {output['messages'][-1].content}\n")
-
-
-if __name__ == "__main__":
-    run_agent()
+client = ObservedLLMClient(AnthropicClient(settings.llm), prices=settings.llm.prices)
 ```
 
----
+## Prompt and model registry (step 6)
 
-## 🧪 Testing, Evals & Code Quality
-
-### Code Linting & Formatting (`ruff`)
-
-`relay-agent` enforces high code quality standard using **Ruff**.
+Prompts live in `registry/library/<name>/v<N>.md`; `registry/roles.toml` pins which model, parameters
+and prompt version each role (router, agent, judge) uses. Every LLM span carries the prompt id and
+hash. Released versions are locked and can never be edited:
 
 ```bash
-# Check code style and linting errors
-uv run ruff check .
-
-# Automatically fix linting and format files
-uv run ruff check --fix .
-uv run ruff format .
+uv run python -m resolve_agent.registry              # show active roles and prompt versions
+uv run python -m resolve_agent.registry.lock check   # CI: fails on edits or unreleased prompts
+uv run python -m resolve_agent.registry.lock update  # release new versions
 ```
 
-### Unit Tests & Multi-Agent Evals (`pytest`)
-
-The project includes unit tests alongside an **LLM-as-a-Judge Evaluation Suite** (`evals/`) that tests factual accuracy, trajectory flow, and tool selection precision.
-
-```bash
-# Run unit tests and evaluation suite
-uv run pytest
-
-# Run with verbose logs to inspect evaluation scores
-uv run pytest -v -s
-```
-
----
-
-## 🛡 License
-
-This project is open-source and licensed under the [MIT License](LICENSE).
+To change a prompt: add `v<N+1>.md`, run `lock update`, then bump `prompt_version` in `roles.toml`.

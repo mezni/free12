@@ -1,0 +1,27 @@
+# Which model and which pinned prompt version each role uses.
+# Prompt versions are pinned explicitly: changing behaviour means changing this file in a
+# reviewed commit, and every trace records the prompt id and hash it ran with.
+
+[roles.router]
+model = "claude-haiku-5-5"
+prompt = "router"
+prompt_version = 1
+max_tokens = 150
+temperature = 0.0
+timeout_s = 2.5
+
+[roles.agent]
+model = "claude-sonnet-5-5"
+prompt = "agent"
+prompt_version = 1
+max_tokens = 1024
+temperature = 0.2
+timeout_s = 8.0
+
+[roles.judge]
+model = "claude-sonnet-5-5"
+prompt = "judge"
+prompt_version = 1
+max_tokens = 400
+temperature = 0.0
+timeout_s = 30.0
