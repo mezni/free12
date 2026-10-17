@@ -30,6 +30,16 @@ class ModelPrice:
 
 
 @dataclass(frozen=True)
+class GuardrailSettings:
+    """Security limits live in code (like policy), not in environment variables."""
+
+    max_input_chars: int = 2000
+    max_memory_chars: int = 300
+    # ids the agent may mention; anything else in a reply must come from a tool result
+    id_pattern: str = r"\b(?:ord|ret|ref|esc)_[A-Za-z0-9]+(?:_[A-Za-z0-9]+)*\b"
+
+
+@dataclass(frozen=True)
 class LLMSettings:
     api_key: str = field(default="", repr=False)
     timeout_s: float = 10.0  # per attempt; set tighter per request for latency-critical calls
@@ -48,6 +58,7 @@ class Settings:
     trace_path: str = "traces/spans.jsonl"  # empty string disables the JSONL trace file
     roles_path: str = ""  # empty: use the packaged registry/roles.toml
     policy: PolicySettings = field(default_factory=PolicySettings)
+    guardrails: GuardrailSettings = field(default_factory=GuardrailSettings)
     llm: LLMSettings = field(default_factory=LLMSettings)
 
     @classmethod

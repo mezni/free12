@@ -83,3 +83,12 @@ uv run python -m resolve_agent.registry.lock update  # release new versions
 ```
 
 To change a prompt: add `v<N+1>.md`, run `lock update`, then bump `prompt_version` in `roles.toml`.
+
+## Guardrails (step 7)
+
+`guardrails/` holds the input guard (size, hidden characters, injection screening, PII masking),
+the output guard (a reply may only state amounts, day counts, ids and outcomes that this turn's tool
+results support), and a gate for long-term memory writes. Use the `Guardrails` facade: it traces
+every check and counts findings without ever recording customer text. Security limits live in
+`GuardrailSettings` (code), not in environment variables. `tests/test_authorization_matrix.py`
+proves every id-taking tool refuses another customer's identifiers.

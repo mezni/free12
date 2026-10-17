@@ -87,3 +87,8 @@ def test_roles_path_setting() -> None:
     assert (
         Settings.from_env({"RESOLVE_ROLES_PATH": "/etc/roles.toml"}).roles_path == "/etc/roles.toml"
     )
+
+
+def test_guardrail_settings_are_code_not_environment() -> None:
+    s = Settings.from_env({"RESOLVE_MAX_INPUT_CHARS": "99999"})
+    assert s.guardrails.max_input_chars == 2000 and s.guardrails.max_memory_chars == 300
